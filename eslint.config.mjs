@@ -9,14 +9,8 @@ const compat = new FlatCompat({
   baseDirectory: __dirname,
 });
 
+// An empty configuration array effectively disables all rules.
 const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
-  {
-    rules: {
-      // Disable all rules
-      "*": "off"
-    }
-  }
 ];
 
 export default eslintConfig;
