@@ -87,6 +87,10 @@ export default function Dashboard({ onBack }: DashboardProps) {
   const [isTempAlarmActive, setIsTempAlarmActive] = useState(false);
   const [isHumidityAlarmActive, setIsHumidityAlarmActive] = useState(false);
 
+  // 新增：在线状态相关的状态
+  const [isOnline, setIsOnline] = useState(false);
+  const [lastDataTime, setLastDataTime] = useState<number | null>(null);
+
   // 新增：用于更新服务器设置的函数
   const updateSettings = async (newSettings: Partial<DeviceSettings>) => {
     try {
@@ -109,6 +113,19 @@ export default function Dashboard({ onBack }: DashboardProps) {
         // 只有当请求成功时才更新数据
         if (response.ok) {
           const { historicalData: newHistoricalData, settings } = await response.json();
+          
+          // 检查是否有新数据
+          if (newHistoricalData && newHistoricalData.length > 0) {
+            const latestTimestamp = newHistoricalData[newHistoricalData.length - 1].timestamp;
+            const latestTime = new Date(latestTimestamp).getTime();
+            
+            // 只有当有新数据时才更新最后数据时间
+            if (!lastDataTime || latestTime > lastDataTime) {
+              setLastDataTime(latestTime);
+              setIsOnline(true); // 收到新数据时立即设置为在线
+            }
+          }
+          
           setHistoricalData(newHistoricalData);
           // 使用从服务器获取的设置更新本地状态
           if (settings) {
@@ -140,7 +157,28 @@ export default function Dashboard({ onBack }: DashboardProps) {
 
     // 组件卸载时清除定时器，防止内存泄漏
     return () => clearInterval(intervalId);
-  }, []); // 空依赖数组表示这个 effect 只在组件挂载时运行一次
+  }, [lastDataTime]); // 添加 lastDataTime 到依赖数组
+
+  // 新增：每60秒检查一次在线状态
+  useEffect(() => {
+    if (!lastDataTime) return;
+
+    const checkOnlineStatus = () => {
+      const now = Date.now();
+      const timeDiff = now - lastDataTime;
+      const oneMinute = 60 * 1000; // 1分钟 = 60,000毫秒
+      
+      setIsOnline(timeDiff < oneMinute);
+    };
+
+    // 立即检查一次
+    checkOnlineStatus();
+
+    // 每60秒检查一次在线状态
+    const statusCheckInterval = setInterval(checkOnlineStatus, 60000);
+
+    return () => clearInterval(statusCheckInterval);
+  }, [lastDataTime]);
 
   const latestData =
     historicalData.length > 0 ? historicalData[historicalData.length - 1] : null;
@@ -170,8 +208,15 @@ export default function Dashboard({ onBack }: DashboardProps) {
             <div>
               <CardTitle className="text-2xl">客厅环境控制器</CardTitle>
               <CardDescription>
-                设备ID: ESP32-A8B4E2 -{" "}
-                <span className="font-semibold text-green-600">在线</span>
+                设备ID: ESP32-C3 -{" "}
+                <span className={`font-semibold ${isOnline ? 'text-green-600' : 'text-red-600'}`}>
+                  {isOnline ? '在线' : '离线'}
+                </span>
+                {lastDataTime && (
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    最后更新: {new Date(lastDataTime).toLocaleString('zh-CN')}
+                  </span>
+                )}
               </CardDescription>
             </div>
           </div>
@@ -197,6 +242,16 @@ export default function Dashboard({ onBack }: DashboardProps) {
             </TabsTrigger>
           </TabsList>
           <TabsContent value="status" className="mt-6">
+            {/* 添加离线警告 */}
+            {!isOnline && lastDataTime && (
+              <Alert variant="destructive" className="mb-4">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>设备离线!</AlertTitle>
+                <AlertDescription>
+                  设备已超过1分钟未发送数据，最后活动时间: {new Date(lastDataTime).toLocaleString('zh-CN')}
+                </AlertDescription>
+              </Alert>
+            )}
             {isTempAlarmActive && (
               <Alert variant="destructive" className="mb-4">
                 <AlertTriangle className="h-4 w-4" />
@@ -262,13 +317,20 @@ export default function Dashboard({ onBack }: DashboardProps) {
               <Card className="hidden lg:block">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">
-                    空气质量
+                    连接状态
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">优</div>
+                  <div className="text-2xl font-bold">
+                    <Badge variant={isOnline ? "default" : "destructive"}>
+                      {isOnline ? "正常" : "断线"}
+                    </Badge>
+                  </div>
                   <p className="text-xs text-muted-foreground">
-                    PM2.5: 12 µg/m³
+                    {lastDataTime 
+                      ? `${Math.floor((Date.now() - lastDataTime) / 1000)}秒前更新`
+                      : "等待连接..."
+                    }
                   </p>
                 </CardContent>
               </Card>
@@ -295,6 +357,7 @@ export default function Dashboard({ onBack }: DashboardProps) {
                       <Switch 
                         id="fan-switch" 
                         checked={isFanManualOn}
+                        disabled={!isOnline} // 离线时禁用控制
                         onCheckedChange={(checked) => {
                           setIsFanManualOn(checked);
                           updateSettings({ isFanManualOn: checked });
@@ -315,6 +378,7 @@ export default function Dashboard({ onBack }: DashboardProps) {
                       <Switch 
                         id="dehumidifier-switch"
                         checked={isDehumidifierManualOn}
+                        disabled={!isOnline} // 离线时禁用控制
                         onCheckedChange={(checked) => {
                           setIsDehumidifierManualOn(checked);
                           updateSettings({ isDehumidifierManualOn: checked });
@@ -322,6 +386,11 @@ export default function Dashboard({ onBack }: DashboardProps) {
                       />
                     )}
                   </div>
+                  {!isOnline && (
+                    <p className="text-sm text-muted-foreground text-center">
+                      设备离线时无法进行手动控制
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -388,7 +457,9 @@ export default function Dashboard({ onBack }: DashboardProps) {
                           contentStyle={{
                             borderRadius: "8px",
                             boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-                            border: "1px solid #e0e0e0",
+                            border: "1px solid hsl(var(--border))",
+                            backgroundColor: "hsl(var(--background))",
+                            color: "hsl(var(--foreground))",
                           }}
                           labelFormatter={(label) =>
                             new Date(label).toLocaleString("zh-CN")
@@ -478,7 +549,9 @@ export default function Dashboard({ onBack }: DashboardProps) {
                           contentStyle={{
                             borderRadius: "8px",
                             boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-                            border: "1px solid #e0e0e0",
+                            border: "1px solid hsl(var(--border))",
+                            backgroundColor: "hsl(var(--background))",
+                            color: "hsl(var(--foreground))",
                           }}
                           labelFormatter={(label) =>
                             new Date(label).toLocaleString("zh-CN")
