@@ -208,9 +208,10 @@ export default function About({ onBack }: AboutProps) {
                   <h4 className="font-medium text-sm">硬件支持</h4>
                   <ul className="space-y-2 text-sm text-muted-foreground">
                     <li>• 乐鑫科技 - ESP32-C3芯片</li>
-                    <li>• 传感器制造商</li>
-                    <li>• 开源硬件社区</li>
-                    <li>• Arduino生态系统</li>
+                    <li>• SHT20温湿度传感器</li>
+                    <li>• PIR人体红外传感器</li>
+                    <li>• PlatformIO</li>
+
                   </ul>
                 </div>
               </div>
