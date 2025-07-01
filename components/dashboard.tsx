@@ -328,7 +328,7 @@ export default function Dashboard({ onBack }: DashboardProps) {
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {lastDataTime 
-                      ? `${Math.floor((Date.now() - lastDataTime) / 1000)}秒前更新`
+                      ? `${-Math.floor((Date.now() - lastDataTime) / 1000)}秒前更新`
                       : "等待连接..."
                     }
                   </p>
